@@ -134,15 +134,13 @@ def sample_odometry_motion(pose, u, alpha):
     
     return [x_sample,y_sample,theta_sample]
 
-def landmark_detection_model(z,pose,m):
-    id = z['id']
+def landmark_detection_model(z, pose, m, sigma_r):
     x,y,theta = pose
-    m_x, m_y = m[i] 
-    d_exp = (m_x-x)**2 + (m_y-y)**2
+    m_x, m_y = m 
+    d_exp = math.sqrt((m_x-x)**2 + (m_y-y)**2)
     # might need normalize it
-    alpha_exp = math.atan2(m_y-y,m_x-x) - theta
-    p
-
+    p = scipy.stats.norm(z-d_exp, scale=sigma_r)
+    return p
 
 def eval_sensor_model(sensor_data, particles, landmarks):
     # Computes the observation likelihood of all particles, given the
@@ -152,19 +150,15 @@ def eval_sensor_model(sensor_data, particles, landmarks):
     # The employed sensor model is range only.
 
     sigma_r = 0.2
-
     #measured landmark ids and ranges
     ids = sensor_data['id']
     ranges = sensor_data['range']
-
     weights = []
-    
-    '''your code here'''
-    '''***        ***'''
-
-
-
-
+    for particle in particles:
+        weight = 1
+        for i in range(len(ids)):            
+            weight = weight*landmark_detection_model(ranges[i],particle,landmarks[i],sigma_r)
+        weights.append(weight)    
 
     #normalize weights
     normalizer = sum(weights)
