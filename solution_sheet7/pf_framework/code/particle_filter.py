@@ -101,23 +101,27 @@ def sample_motion_model(odometry, particles):
 
     # the motion noise parameters: [alpha1, alpha2, alpha3, alpha4]
     noise = [0.1, 0.1, 0.05, 0.05]
-    u = [odometry['r1'], odometry['r2'], odometry['r2']]
 
     new_particles = []
     for particle in particles:
-        new_particles.append(sample_odometry_motion(particle, u, noise))
+        new_particles.append(sample_odometry_motion(particle, odometry, noise))
     
     return new_particles
 
 def sample_gaussian_muller(mean, std_dev):
     u1 = np.random.uniform(0,1)
     u2 = np.random.uniform(0,1)
-    sample =   math.cos(2*np.pi*u1)*math.sqrt(-2*math.log(u2))     
+    sample = math.cos(2*np.pi*u1)*math.sqrt(-2*math.log(u2))     
     return sample * std_dev + mean
 
-def sample_odometry_motion(pose, u, alpha):
-    x, y, theta = pose
-    rot1, rot2, trans = u
+def sample_odometry_motion(particle, odometry, alpha):
+    x = particle['x']
+    y = particle['y']
+    theta = particle['theta']
+    rot1 = odometry['r1'] 
+    rot2 = odometry['r2']
+    trans = odometry['t']
+
     alpha1, alpha2, alpha3, alpha4 = alpha
 
     std_dev_rot1 = alpha1*abs(rot1)+alpha2*trans
@@ -131,15 +135,25 @@ def sample_odometry_motion(pose, u, alpha):
     x_sample = x + trans_sample*math.cos(theta+rot1_sample)
     y_sample = y + trans_sample*math.sin(theta+rot1_sample)
     theta_sample = theta + rot1_sample + rot2_sample
-    
-    return [x_sample,y_sample,theta_sample]
 
-def landmark_detection_model(z, pose, m, sigma_r):
-    x,y,theta = pose
+    new_particle = {}
+    new_particle['x'] = x_sample
+    new_particle['y'] = y_sample
+    new_particle['theta'] = theta_sample
+   
+    return new_particle
+
+def gaussian(x, mean, std_dev):
+    return math.exp(-0.5*(x-mean)**2/std_dev)/(std_dev*math.sqrt(2*np.pi))
+
+def landmark_detection_model(z, particle, m, sigma_r):
+    x = particle['x']
+    y = particle['y']
+    theta = particle['theta']
     m_x, m_y = m 
-    d_exp = math.sqrt((m_x-x)**2 + (m_y-y)**2)
+    d_exp = math.sqrt((m_x-x)**2 + (m_y-y)**2 + 1e-8)
     # might need normalize it
-    p = scipy.stats.norm(z-d_exp, scale=sigma_r)
+    p = gaussian(z-d_exp, 0, sigma_r)
     return p
 
 def eval_sensor_model(sensor_data, particles, landmarks):
@@ -156,13 +170,13 @@ def eval_sensor_model(sensor_data, particles, landmarks):
     weights = []
     for particle in particles:
         weight = 1
-        for i in range(len(ids)):            
-            weight = weight*landmark_detection_model(ranges[i],particle,landmarks[i],sigma_r)
+        for i in range(len(ids)):   
+            weight = weight*landmark_detection_model(ranges[i],particle,landmarks[ids[i]],sigma_r)
         weights.append(weight)    
 
     #normalize weights
     normalizer = sum(weights)
-    weights = weights / normalizer
+    weights = list(np.array(weights) / normalizer)
 
     return weights
 
@@ -172,14 +186,11 @@ def resample_particles(particles, weights):
 
     new_particles = []
 
-    '''your code here'''
-    '''***        ***'''
-
     for i in range(len(weights)):
         sum = 0
-        sample = np.random.rand(0,1)
+        sample = np.random.rand()
         for j in range(len(weights)):
-            sum = sum + weight[j]
+            sum = sum + weights[j]
             if sample < sum:
                 new_particles.append(particles[j]) 
                 break
@@ -189,10 +200,10 @@ def resample_particles(particles, weights):
 def main():
     # implementation of a particle filter for robot pose estimation
 
-    print "Reading landmark positions"
+    print("Reading landmark positions")
     landmarks = read_world("../data/world.dat")
 
-    print "Reading sensor data"
+    print("Reading sensor data")
     sensor_readings = read_sensor_data("../data/sensor_data.dat")
 
     #initialize the particles
@@ -200,7 +211,7 @@ def main():
     particles = initialize_particles(1000, map_limits)
 
     #run particle filter
-    for timestep in range(len(sensor_readings)/2):
+    for timestep in range(int(len(sensor_readings)/2)):
 
         #plot the current state
         plot_state(particles, landmarks, map_limits)
@@ -209,11 +220,15 @@ def main():
         new_particles = sample_motion_model(sensor_readings[timestep,'odometry'], particles)
 
         #calculate importance weights according to sensor model
+
+
         weights = eval_sensor_model(sensor_readings[timestep, 'sensor'], new_particles, landmarks)
 
+        sum_weights = sum(weights)
+        print("weights", sum_weights)
         #resample new particle set according to their importance weights
         particles = resample_particles(new_particles, weights)
-
+    
     plt.show('hold')
 
 if __name__ == "__main__":
