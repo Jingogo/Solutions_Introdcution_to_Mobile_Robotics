@@ -175,9 +175,14 @@ def resample_particles(particles, weights):
     '''your code here'''
     '''***        ***'''
 
-
-
-
+    for i in range(len(weights)):
+        sum = 0
+        sample = np.random.rand(0,1)
+        for j in range(len(weights)):
+            sum = sum + weight[j]
+            if sample < sum:
+                new_particles.append(particles[j]) 
+                break
 
     return new_particles
 
