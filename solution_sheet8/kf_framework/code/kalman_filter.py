@@ -81,12 +81,21 @@ def prediction_step(odometry, mu, sigma):
     delta_rot1 = odometry['r1']
     delta_trans = odometry['t']
     delta_rot2 = odometry['r2']
+    
+    G = np.eye(3)
+    G[0,2] = -delta_trans*math.sin(theta+delta_rot1) 
+    G[1,2] = delta_trans*math.cos(theta+delta_rot1)
 
-    '''your code here'''
-    '''***        ***'''
-
-
-
+    R_motion_noise = np.zeros((3,3))
+    R[0,0] = 0.2
+    R[1,1] = 0.2
+    R[2,2] = 0.02
+    
+    mu[0] = x + delta_trans*math.cos(theta+delta_rot1)
+    mu[1] = y + delta_trans*math.sin(theta+delta_rot1)
+    # might need normalization
+    mu[2] = theta + delta_rot1  + delta_rot2
+    sigma = np.matmul(np.matmul(G,sigma),np.transpose(G)) + R_motion_noise
     return mu, sigma
 
 def correction_step(sensor_data, mu, sigma, landmarks):
