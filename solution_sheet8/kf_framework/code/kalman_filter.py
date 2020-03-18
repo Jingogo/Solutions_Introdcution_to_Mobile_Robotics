@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.stats
 import matplotlib.pyplot as plt
+import math
 from read_data import read_world, read_sensor_data
 from matplotlib.patches import Ellipse
 
@@ -83,13 +84,13 @@ def prediction_step(odometry, mu, sigma):
     delta_rot2 = odometry['r2']
     
     G = np.eye(3)
-    G[0,2] = -delta_trans*math.sin(theta+delta_rot1) 
+    G[0,2] = -delta_trans*math.sin(theta+delta_rot1)
     G[1,2] = delta_trans*math.cos(theta+delta_rot1)
 
     R_motion_noise = np.zeros((3,3))
-    R[0,0] = 0.2
-    R[1,1] = 0.2
-    R[2,2] = 0.02
+    R_motion_noise[0,0] = 0.2
+    R_motion_noise[1,1] = 0.2
+    R_motion_noise[2,2] = 0.02
     
     mu[0] = x + delta_trans*math.cos(theta+delta_rot1)
     mu[1] = y + delta_trans*math.sin(theta+delta_rot1)
@@ -116,20 +117,40 @@ def correction_step(sensor_data, mu, sigma, landmarks):
     ids = sensor_data['id']
     ranges = sensor_data['range']
 
-    '''your code here'''
-    '''***        ***'''
+    H = []
+    z_pred = []
+    z = [] 
 
+    for id, range in zip(ids,ranges):
+        m_x = landmarks[id][0]
+        m_y = landmarks[id][1]
+        d = np.sqrt((x-m_x)**2+(y-m_y)**2)
+        H.append([(x-m_x)/d, (y-m_y)/d, 0])
+        z.append(range)
+        z_pred.append(d)
 
+    H = np.array(H)
+    z_pred = np.transpose(np.array(z_pred))
+    z = np.transpose(np.array(z))
+
+    R_meas_noise = 0.5*np.eye(len(ids))
+    A = np.matmul(sigma,np.transpose(H))
+    B = np.linalg.inv(np.matmul(H, A)+ R_meas_noise)
+    K = np.matmul(A,B)
+    
+    I  = np.eye(3)
+    mu = mu + np.matmul(K, z-z_pred)
+    sigma = np.matmul(I-np.matmul(K,H), sigma)
 
     return mu, sigma
 
 def main():
     # implementation of an extended Kalman filter for robot pose estimation
 
-    print "Reading landmark positions"
+    print("Reading landmark positions")
     landmarks = read_world("../data/world.dat")
 
-    print "Reading sensor data"
+    print("Reading sensor data")
     sensor_readings = read_sensor_data("../data/sensor_data.dat")
 
     #initialize belief
@@ -141,7 +162,7 @@ def main():
     map_limits = [-1, 12, -1, 10]
 
     #run kalman filter
-    for timestep in range(len(sensor_readings)/2):
+    for timestep in range(int(len(sensor_readings)/2)):
 
         #plot the current state
         plot_state(mu, sigma, landmarks, map_limits)
@@ -151,6 +172,7 @@ def main():
 
         #perform correction step
         mu, sigma = correction_step(sensor_readings[timestep, 'sensor'], mu, sigma, landmarks)
+        print(sigma)
 
     plt.show('hold')
 
