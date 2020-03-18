@@ -172,7 +172,6 @@ def main():
 
         #perform correction step
         mu, sigma = correction_step(sensor_readings[timestep, 'sensor'], mu, sigma, landmarks)
-        print(sigma)
 
     plt.show('hold')
 
