@@ -3,6 +3,7 @@ from misc_tools import *
 import numpy as np
 import math
 import copy
+import matplotlib.pyplot as plt 
 
 #plot preferences, interactive plotting mode
 plt.axis([-1, 12, 0, 10])
@@ -53,18 +54,57 @@ def sample_motion_model(odometry, particles):
     # Updates the particle positions, based on old positions, the odometry
     # measurements and the motion noise 
 
-    delta_rot1 = odometry['r1']
-    delta_trans = odometry['t']
-    delta_rot2 = odometry['r2']
+    # delta_rot1 = odometry['r1']
+    # delta_trans = odometry['t']
+    # delta_rot2 = odometry['r2']
 
     # the motion noise parameters: [alpha1, alpha2, alpha3, alpha4]
     noise = [0.1, 0.1, 0.05, 0.05]
 
     '''your code here'''
     '''***        ***'''
+    for particle in particles:
+        pose = {}
+        pose['x'] = particle['x']
+        pose['y'] = particle['y']
+        pose['theta'] =  particle['theta']
 
+        new_pose = sample_odometry_motion(pose, odometry, noise)
+        particle['x'] = new_pose['x']
+        particle['y'] = new_pose['y']
+        particle['theta'] = new_pose['theta']
+        particle['history'].append([pose['x'], pose['y']])
+    
+    return 
 
+def sample_odometry_motion(particle, odometry, alpha):
+    x = particle['x']
+    y = particle['y']
+    theta = particle['theta']
+    rot1 = odometry['r1'] 
+    rot2 = odometry['r2']
+    trans = odometry['t']
 
+    alpha1, alpha2, alpha3, alpha4 = alpha
+
+    std_dev_rot1 = alpha1*abs(rot1)+alpha2*trans
+    std_dev_rot2 = alpha1*abs(rot2)+alpha2*trans
+    std_dev_trans = alpha3*trans + alpha4*abs(rot1) + alpha4*abs(rot2)
+
+    rot1_sample = rot1 - sample_gaussian_muller(0, std_dev_rot1)
+    rot2_sample = rot2 - sample_gaussian_muller(0, std_dev_rot2)
+    trans_sample = trans - sample_gaussian_muller(0, std_dev_trans)
+
+    x_sample = x + trans_sample*math.cos(theta+rot1_sample)
+    y_sample = y + trans_sample*math.sin(theta+rot1_sample)
+    theta_sample = theta + rot1_sample + rot2_sample
+    
+    new_pose = {}
+    new_pose['x'] = x_sample
+    new_pose['y'] = y_sample
+    new_pose['theta'] = theta_sample
+
+    return new_pose
 
 def measurement_model(particle, landmark):
     #Compute the expected measurement for a landmark
@@ -134,9 +174,12 @@ def eval_sensor_model(sensor_data, particles):
                 # provided function 'measurement_model' above
                 '''your code here'''
                 '''***        ***'''
-
-
-
+                mx = px +  math.cos(ptheta + meas_bearing)*meas_range
+                my = py +  math.sin(ptheta + meas_bearing)*meas_range
+                landmark['mu'] = [mx,my]
+                h, H = measurement_model(particle, landmark)
+                H_inv =  np.linalg.inv(H)
+                landmark['sigma'] = H_inv.dot(Q_t).dot(H_inv.T)
                 landmark['observed'] = True
 
             else:
@@ -147,16 +190,26 @@ def eval_sensor_model(sensor_data, particles):
                 # calculate particle weight: particle['weight'] = ...
                 '''your code here'''
                 '''***        ***'''
-
-
-
+                h, H = measurement_model(particle, landmark)
+                Q = H.dot(landmark['sigma']).dot(H.T) + Q_t
+                K = landmark['sigma'].dot(H.T).dot(np.linalg.inv(Q))
+                diff = np.array([meas_range-h[0], angle_diff(meas_bearing, h[1])])
+                landmark['mu'] = landmark['mu'] + K.dot(diff)
+                landmark['sigma'] = landmark['sigma'] - K.dot(H).dot(landmark['sigma'])
+                a =  1 / np.sqrt(math.pow(2*math.pi,2) * np.linalg.det(Q))
+                b =  np.exp(-0.5 * np.dot(diff.T, np.linalg.inv(Q)).dot(diff))
+                landmark['weight'] = a*b
     #normalize weights
     normalizer = sum([p['weight'] for p in particles])
+    
+    weights = []
 
     for particle in particles:
         particle['weight'] = particle['weight'] / normalizer
+        weights.append(particle['weight'])
+    return weights
 
-def resample_particles(particles):
+def resample_particles(particles, weights):
     # Returns a new set of particles obtained by performing
     # stochastic universal sampling, according to the particle 
     # weights.
@@ -172,16 +225,31 @@ def resample_particles(particles):
     # ...
     # new_particles.append(new_particle)
 
-
+    for i in range(len(weights)):
+        sum = 0
+        sample = np.random.rand()
+        for j in range(len(weights)):
+            sum = sum + weights[j]
+            if sample < sum:
+                new_particle = copy.deepcopy(particles[j])
+                new_particle['weight'] = 1.0/len(particles)
+                new_particles.append(copy.deepcopy(particles[j]))
+                break
 
     return new_particles
 
+def sample_gaussian_muller(mean, std_dev):
+    u1 = np.random.uniform(0,1)
+    u2 = np.random.uniform(0,1)
+    sample = math.cos(2*np.pi*u1)*math.sqrt(-2*math.log(u2))     
+    return sample * std_dev + mean
+
 def main():
 
-    print "Reading landmark positions"
+    print("Reading landmark positions")
     landmarks = read_world("../data/world.dat")
 
-    print "Reading sensor data"
+    print("Reading sensor data")
     sensor_readings = read_sensor_data("../data/sensor_data.dat")
 
     num_particles = 100
@@ -191,19 +259,19 @@ def main():
     particles = initialize_particles(num_particles, num_landmarks)
 
     #run FastSLAM
-    for timestep in range(len(sensor_readings)/2):
+    for timestep in range(int(len(sensor_readings)/2)):
 
         #predict particles by sampling from motion model with odometry info
         sample_motion_model(sensor_readings[timestep,'odometry'], particles)
 
         #evaluate sensor model to update landmarks and calculate particle weights
-        eval_sensor_model(sensor_readings[timestep, 'sensor'], particles)
+        weights = eval_sensor_model(sensor_readings[timestep, 'sensor'], particles)
 
         #plot filter state
         plot_state(particles, landmarks)
 
         #calculate new set of equally weighted particles
-        particles = resample_particles(particles)
+        particles = resample_particles(particles, weights)
 
     plt.show('hold')
 

@@ -2,6 +2,8 @@ import numpy as np
 import scipy.stats
 import matplotlib.pyplot as plt
 import math
+import copy
+
 from read_data import read_world, read_sensor_data
 
 #add random seed for generating comparable pseudo random numbers
@@ -192,7 +194,7 @@ def resample_particles(particles, weights):
         for j in range(len(weights)):
             sum = sum + weights[j]
             if sample < sum:
-                new_particles.append(particles[j]) 
+                new_particles.append(copy.deepcopy(particles[j]))
                 break
 
     return new_particles

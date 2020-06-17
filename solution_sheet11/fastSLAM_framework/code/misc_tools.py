@@ -86,6 +86,7 @@ def plot_state(particles, landmarks):
     hy = []
 
     for pos in hist:
+        print(pos[0])
         hx.append(pos[0])
         hy.append(pos[1])
 
