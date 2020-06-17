@@ -174,11 +174,13 @@ def eval_sensor_model(sensor_data, particles):
                 # provided function 'measurement_model' above
                 '''your code here'''
                 '''***        ***'''
-                mx = px +  math.cos(ptheta + meas_bearing)*meas_range
-                my = py +  math.sin(ptheta + meas_bearing)*meas_range
-                landmark['mu'] = [mx,my]
+                lx = px + meas_range * np.cos(ptheta + meas_bearing)
+                ly = py + meas_range * np.sin(ptheta + meas_bearing)
+                landmark['mu'] = [lx, ly]
+                #get expected measurement and Jacobian wrt. landmark position
                 h, H = measurement_model(particle, landmark)
-                H_inv =  np.linalg.inv(H)
+                #initialize covariance for this landmark
+                H_inv = np.linalg.inv(H)
                 landmark['sigma'] = H_inv.dot(Q_t).dot(H_inv.T)
                 landmark['observed'] = True
 
@@ -191,50 +193,54 @@ def eval_sensor_model(sensor_data, particles):
                 '''your code here'''
                 '''***        ***'''
                 h, H = measurement_model(particle, landmark)
-                Q = H.dot(landmark['sigma']).dot(H.T) + Q_t
-                K = landmark['sigma'].dot(H.T).dot(np.linalg.inv(Q))
-                diff = np.array([meas_range-h[0], angle_diff(meas_bearing, h[1])])
-                landmark['mu'] = landmark['mu'] + K.dot(diff)
-                landmark['sigma'] = landmark['sigma'] - K.dot(H).dot(landmark['sigma'])
-                a =  1 / np.sqrt(math.pow(2*math.pi,2) * np.linalg.det(Q))
-                b =  np.exp(-0.5 * np.dot(diff.T, np.linalg.inv(Q)).dot(diff))
-                landmark['weight'] = a*b
+                #Calculate measurement covariance and Kalman gain
+                S = landmark['sigma']
+                Q = H.dot(S).dot(H.T) + Q_t
+                K = S.dot(H.T).dot(np.linalg.inv(Q))
+                #Compute the difference between the observed and the expected measurement
+                delta = np.array([meas_range - h[0], angle_diff(meas_bearing,h[1])])
+                #update estimated landmark position and covariance
+                landmark['mu'] = landmark['mu'] + K.dot(delta)
+                landmark['sigma'] = (np.identity(2) - K.dot(H)).dot(S)
+                # compute the likelihood of this observation
+                fact = 1 / np.sqrt(math.pow(2*math.pi,2) * np.linalg.det(Q))
+                expo = -0.5 * np.dot(delta.T, np.linalg.inv(Q)).dot(delta)
+                weight = fact * np.exp(expo)
+                particle['weight'] = particle['weight'] * weight
     #normalize weights
     normalizer = sum([p['weight'] for p in particles])
     
-    weights = []
-
     for particle in particles:
         particle['weight'] = particle['weight'] / normalizer
-        weights.append(particle['weight'])
-    return weights
+        
+    return 
 
-def resample_particles(particles, weights):
+def resample_particles(particles):
     # Returns a new set of particles obtained by performing
     # stochastic universal sampling, according to the particle 
     # weights.
 
+    # distance between pointers
+    step = 1.0/len(particles)
+    # random start of first pointer
+    u = np.random.uniform(0,step)
+    # where we are along the weights
+    c = particles[0]['weight']
+    # index of weight container and corresponding particle
+    i = 0
     new_particles = []
-
-    '''your code here'''
-    '''***        ***'''
-
-    # hint: To copy a particle from particles to the new_particles
-    # list, first make a copy:
-    # new_particle = copy.deepcopy(particles[i])
-    # ...
-    # new_particles.append(new_particle)
-
-    for i in range(len(weights)):
-        sum = 0
-        sample = np.random.rand()
-        for j in range(len(weights)):
-            sum = sum + weights[j]
-            if sample < sum:
-                new_particle = copy.deepcopy(particles[j])
-                new_particle['weight'] = 1.0/len(particles)
-                new_particles.append(copy.deepcopy(particles[j]))
-                break
+    #loop over all particle weights
+    for particle in particles:
+    #go through the weights until you find the particle
+    #to which the pointer points
+        while u > c:
+            i = i + 1
+            c = c + particles[i]['weight']
+        #add that particle
+        new_particle = copy.deepcopy(particles[i])
+        new_particle['weight'] = 1.0/len(particles)
+        new_particles.append(new_particle)
+        u = u + step
 
     return new_particles
 
@@ -265,13 +271,13 @@ def main():
         sample_motion_model(sensor_readings[timestep,'odometry'], particles)
 
         #evaluate sensor model to update landmarks and calculate particle weights
-        weights = eval_sensor_model(sensor_readings[timestep, 'sensor'], particles)
+        eval_sensor_model(sensor_readings[timestep, 'sensor'], particles)
 
         #plot filter state
         plot_state(particles, landmarks)
 
         #calculate new set of equally weighted particles
-        particles = resample_particles(particles, weights)
+        particles = resample_particles(particles)
 
     plt.show('hold')
 
