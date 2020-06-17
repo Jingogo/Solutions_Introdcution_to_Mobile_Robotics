@@ -59,21 +59,31 @@ def sample_motion_model(odometry, particles):
     # delta_rot2 = odometry['r2']
 
     # the motion noise parameters: [alpha1, alpha2, alpha3, alpha4]
+    delta_rot1 = odometry['r1']
+    delta_trans = odometry['t']
+    delta_rot2 = odometry['r2']
+    # the motion noise parameters: [alpha1, alpha2, alpha3, alpha4]
     noise = [0.1, 0.1, 0.05, 0.05]
-
-    '''your code here'''
-    '''***        ***'''
+    # standard deviations of motion noise
+    sigma_delta_rot1 = noise[0] * abs(delta_rot1) + noise[1] * delta_trans
+    sigma_delta_trans = noise[2] * delta_trans + \
+    noise[3] * (abs(delta_rot1) + abs(delta_rot2))
+    sigma_delta_rot2 = noise[0] * abs(delta_rot2) + noise[1] * delta_trans
+    # "move" each particle according to the odometry measurements plus sampled noise
     for particle in particles:
-        pose = {}
-        pose['x'] = particle['x']
-        pose['y'] = particle['y']
-        pose['theta'] =  particle['theta']
-
-        new_pose = sample_odometry_motion(pose, odometry, noise)
-        particle['x'] = new_pose['x']
-        particle['y'] = new_pose['y']
-        particle['theta'] = new_pose['theta']
-        particle['history'].append([pose['x'], pose['y']])
+    #sample noisy motions
+        noisy_delta_rot1 = delta_rot1 + np.random.normal(0, sigma_delta_rot1)
+        noisy_delta_trans = delta_trans + np.random.normal(0, sigma_delta_trans)
+        noisy_delta_rot2 = delta_rot2 + np.random.normal(0, sigma_delta_rot2)
+        #remember last position to draw path of particle
+        particle['history'].append([particle['x'], particle['y']])
+        # calculate new particle pose
+        particle['x'] = particle['x'] + \
+        noisy_delta_trans * np.cos(particle['theta'] + noisy_delta_rot1)
+        particle['y'] = particle['y'] + \
+        noisy_delta_trans * np.sin(particle['theta'] + noisy_delta_rot1)
+        particle['theta'] = particle['theta'] + \
+        noisy_delta_rot1 + noisy_delta_rot2
     
     return 
 
